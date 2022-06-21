@@ -9,6 +9,15 @@ const minhold = 6;
 // background color, useful for keying out
 const bg_color = [3]u8{ 0, 255, 0 };
 
+inline fn empty_bulk(tick: u32) parser.Framebulk {
+    return parser.Framebulk{
+        .tick = tick,
+        .view_analog = @Vector(2, f32){ 0, 0 },
+        .move_analog = @Vector(2, f32){ 0, 0 },
+        .buttons = .{},
+    };
+}
+
 const ControllerFrameProducer = struct {
     arena: std.heap.ArenaAllocator,
 
@@ -33,6 +42,9 @@ const ControllerFrameProducer = struct {
 
     // how many frames do we want to interpolate sticks over for each tick?
     frames_per_tick: u16,
+
+    // how many ticks do we want to render in total?
+    render_ticks: u32,
 
     // tracking ticks and frames
     tick: u32 = 0,
@@ -64,10 +76,10 @@ const ControllerFrameProducer = struct {
     }
 
     pub fn hasFrame(self: ControllerFrameProducer) bool {
-        return self.tick < self.framebulks.len;
+        return self.tick < self.render_ticks;
     }
 
-    pub fn init(allocator: std.mem.Allocator, img_dir: []const u8, tas_file: []const u8, frames_per_tick: u16) !ControllerFrameProducer {
+    pub fn init(allocator: std.mem.Allocator, img_dir: []const u8, tas_file: []const u8, render_ticks: u32, frames_per_tick: u16) !ControllerFrameProducer {
         var dir = try std.fs.cwd().openDir(img_dir, .{});
         defer dir.close();
 
@@ -97,6 +109,7 @@ const ControllerFrameProducer = struct {
             .button_z_pressed = try readImage(arena.allocator(), dir, "button_z_pressed.png"),
 
             .frames_per_tick = frames_per_tick,
+            .render_ticks = render_ticks,
         };
 
         cfp.updateTick();
@@ -114,10 +127,15 @@ const ControllerFrameProducer = struct {
     fn updateTick(self: *ControllerFrameProducer) void {
         self.frames_to_next_tick = self.frames_per_tick;
 
-        if (self.tick >= self.framebulks.len) return;
+        const prev_buttons = if (self.tick == 0 or self.tick > self.framebulks.len)
+            parser.Framebulk.Buttons{}
+        else
+            self.framebulks[self.tick - 1].buttons;
 
-        const prev_buttons = if (self.tick == 0) parser.Framebulk.Buttons{} else self.framebulks[self.tick - 1].buttons;
-        const cur = self.framebulks[self.tick];
+        const cur = if (self.tick < self.framebulks.len)
+            self.framebulks[self.tick]
+        else
+            empty_bulk(self.tick);
 
         // if button was held, increment its duration
         if (self.button_hold_duration.j > 0) self.button_hold_duration.j += 1;
@@ -157,11 +175,17 @@ const ControllerFrameProducer = struct {
     }
 
     pub fn generate(self: *ControllerFrameProducer, dst: [][3]u8) void {
-        const cur = self.framebulks[self.tick];
+        const cur = if (self.tick < self.framebulks.len)
+            self.framebulks[self.tick]
+        else
+            empty_bulk(self.tick);
+
         const next = if (self.tick + 1 == self.framebulks.len)
             cur
+        else if (self.tick + 1 < self.framebulks.len)
+            self.framebulks[self.tick + 1]
         else
-            self.framebulks[self.tick + 1];
+            empty_bulk(self.tick + 1);
 
         const ratio = 1.0 - @intToFloat(f32, self.frames_to_next_tick) / @intToFloat(f32, self.frames_per_tick);
 
@@ -293,8 +317,17 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 
-    var producer = try ControllerFrameProducer.init(gpa.allocator(), "images", "test_raw.p2tas", 12);
+    var args = try std.process.argsWithAllocator(gpa.allocator());
+    defer args.deinit();
+
+    if (!args.skip()) return error.BadUsage;
+    const filename = args.next() orelse return error.BadUsage;
+    const ticks_str = args.next() orelse return error.BadUsage;
+
+    const ticks = std.fmt.parseInt(u32, ticks_str, 10) catch return error.BadUsage;
+
+    var producer = try ControllerFrameProducer.init(gpa.allocator(), "images", filename, ticks, 1);
     defer producer.deinit();
 
-    try render.render("test.mp4", &producer);
+    try render.render("controller.mp4", &producer);
 }
