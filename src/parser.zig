@@ -57,6 +57,8 @@ fn parseData(self: *Parser) ![]Framebulk {
         if (std.mem.startsWith(u8, line, "repeat")) return error.RepeatInRaw;
         if (std.mem.startsWith(u8, line, "end")) return error.EndInRaw;
 
+        if (std.mem.startsWith(u8, line, "rngmanip")) continue; // these should only be in the header but idc enough to check that
+
         const tick_idx = std.mem.indexOfScalar(u8, line, '>') orelse return error.InvalidFramebulk;
         const tick_str = line[0..tick_idx];
 
