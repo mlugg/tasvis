@@ -25,14 +25,6 @@ pub const Image = struct {
         allocator.free(self.pixels);
     }
 
-    pub fn clone(self: Image, allocator: std.mem.Allocator) !Image {
-        return Image{
-            .width = self.width,
-            .height = self.height,
-            .pixels = allocator.dupe([4]u16, self.pixels),
-        };
-    }
-
     /// Return the X coordinate of the pixel at index
     pub fn x(self: Image, index: usize) u32 {
         return @intCast(u32, index % self.width);
