@@ -323,11 +323,12 @@ pub fn main() !void {
     if (!args.skip()) return error.BadUsage;
     const filename = args.next() orelse return error.BadUsage;
     const ticks_str = args.next() orelse return error.BadUsage;
+    const out_file = args.next() orelse "controller.mp4";
 
     const ticks = std.fmt.parseInt(u32, ticks_str, 10) catch return error.BadUsage;
 
     var producer = try ControllerFrameProducer.init(gpa.allocator(), "images", filename, ticks, 1);
     defer producer.deinit();
 
-    try render.render("controller.mp4", &producer);
+    try render.render(out_file, &producer);
 }
