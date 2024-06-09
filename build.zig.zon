@@ -1,0 +1,16 @@
+.{
+    .name = "tasvis",
+    .version = "0.1.0",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "images",
+        "src",
+    },
+    .dependencies = .{
+        .zpng = .{
+            .url = "https://github.com/mlugg/zpng/archive/0157a026eee130f5c81a738ab7787fcc95983aa5.tar.gz",
+            .hash = "1220f4270c5caaffda2c3f17d0378bc5de86993b6f09951b33a8f1464a05ca40765b",
+        },
+    },
+}

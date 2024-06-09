@@ -1,19 +1,19 @@
 const std = @import("std");
 const render = @import("render.zig");
 const parser = @import("parser.zig");
-const zpng = @import("zpng.zig");
+const zpng = @import("zpng");
 
 // minimum duration to hold buttons for
 const minhold = 6;
 
 // background color, useful for keying out
-const bg_color = [3]u8{ 0, 255, 0 };
+const bg_color: [3]u8 = .{ 0, 255, 0 };
 
-inline fn empty_bulk(tick: u32) parser.Framebulk {
-    return parser.Framebulk{
+fn emptyBulk(tick: u32) parser.Framebulk {
+    return .{
         .tick = tick,
-        .view_analog = @Vector(2, f32){ 0, 0 },
-        .move_analog = @Vector(2, f32){ 0, 0 },
+        .view_analog = .{ 0, 0 },
+        .move_analog = .{ 0, 0 },
         .buttons = .{},
     };
 }
@@ -64,11 +64,11 @@ const ControllerFrameProducer = struct {
     buttons: parser.Framebulk.Buttons = .{},
 
     pub fn getWidth(self: ControllerFrameProducer) u16 {
-        return @intCast(u16, self.base.width);
+        return @intCast(self.base.width);
     }
 
     pub fn getHeight(self: ControllerFrameProducer) u16 {
-        return @intCast(u16, self.base.height);
+        return @intCast(self.base.height);
     }
 
     pub fn getRate(self: ControllerFrameProducer) u16 {
@@ -88,7 +88,7 @@ const ControllerFrameProducer = struct {
 
         const framebulks = try parser.parse(arena.allocator(), tas_file);
 
-        var cfp = ControllerFrameProducer{
+        var cfp: ControllerFrameProducer = .{
             .arena = arena,
 
             .framebulks = framebulks,
@@ -127,15 +127,15 @@ const ControllerFrameProducer = struct {
     fn updateTick(self: *ControllerFrameProducer) void {
         self.frames_to_next_tick = self.frames_per_tick;
 
-        const prev_buttons = if (self.tick == 0 or self.tick > self.framebulks.len)
-            parser.Framebulk.Buttons{}
+        const prev_buttons: parser.Framebulk.Buttons = if (self.tick == 0 or self.tick > self.framebulks.len)
+            .{}
         else
             self.framebulks[self.tick - 1].buttons;
 
         const cur = if (self.tick < self.framebulks.len)
             self.framebulks[self.tick]
         else
-            empty_bulk(self.tick);
+            emptyBulk(self.tick);
 
         // if button was held, increment its duration
         if (self.button_hold_duration.j > 0) self.button_hold_duration.j += 1;
@@ -162,7 +162,7 @@ const ControllerFrameProducer = struct {
         if (!cur.buttons.o and self.button_hold_duration.o > minhold) self.button_hold_duration.o = 0;
 
         // hold iff hold duration is nonzero
-        const buttons = parser.Framebulk.Buttons{
+        const buttons: parser.Framebulk.Buttons = .{
             .j = self.button_hold_duration.j > 0,
             .d = self.button_hold_duration.d > 0,
             .u = self.button_hold_duration.u > 0,
@@ -178,19 +178,20 @@ const ControllerFrameProducer = struct {
         const cur = if (self.tick < self.framebulks.len)
             self.framebulks[self.tick]
         else
-            empty_bulk(self.tick);
+            emptyBulk(self.tick);
 
         const next = if (self.tick + 1 == self.framebulks.len)
             cur
         else if (self.tick + 1 < self.framebulks.len)
             self.framebulks[self.tick + 1]
         else
-            empty_bulk(self.tick + 1);
+            emptyBulk(self.tick + 1);
 
-        const ratio = 1.0 - @intToFloat(f32, self.frames_to_next_tick) / @intToFloat(f32, self.frames_per_tick);
+        const ratio = 1.0 - @as(f32, @floatFromInt(self.frames_to_next_tick)) / @as(f32, @floatFromInt(self.frames_per_tick));
+        const F32x2 = @Vector(2, f32);
 
-        const view_analog = cur.view_analog * @splat(2, 1.0 - ratio) + next.view_analog * @splat(2, ratio);
-        const move_analog = cur.move_analog * @splat(2, 1.0 - ratio) + next.move_analog * @splat(2, ratio);
+        const view_analog = cur.view_analog * @as(F32x2, @splat(1.0 - ratio)) + next.view_analog * @as(F32x2, @splat(ratio));
+        const move_analog = cur.move_analog * @as(F32x2, @splat(1.0 - ratio)) + next.move_analog * @as(F32x2, @splat(ratio));
 
         self.createBaseImage(dst);
 
@@ -224,50 +225,49 @@ const ControllerFrameProducer = struct {
 
     fn rescaleView(ang_delta: @Vector(2, f32)) @Vector(2, f32) {
         if (ang_delta[0] == 0 and ang_delta[1] == 0) {
-            return @Vector(2, f32){ 0, 0 };
+            return .{ 0, 0 };
         }
 
         const len = std.math.sqrt(@reduce(.Add, ang_delta * ang_delta));
 
-        const norm = ang_delta / @splat(2, len);
+        const norm = ang_delta / @as(@Vector(2, f32), @splat(len));
         const new_len = std.math.pow(f32, len / 180.0, 0.3);
 
-        return norm * @splat(2, new_len);
+        return norm * @as(@Vector(2, f32), @splat(new_len));
     }
 
     fn calcStickPos(center_x: u32, center_y: u32, rad: u32, stick: @Vector(2, f32)) @Vector(2, u32) {
         std.debug.assert(rad < center_x);
         std.debug.assert(rad < center_y);
 
-        const dx = stick[0] * @intToFloat(f32, rad);
-        const dy = stick[1] * @intToFloat(f32, rad);
+        const radf: f32 = @floatFromInt(rad);
 
-        const x = @intCast(i32, center_x) + @floatToInt(i32, dx);
-        const y = @intCast(i32, center_y) - @floatToInt(i32, dy);
+        const dx = stick[0] * radf;
+        const dy = stick[1] * radf;
 
-        return @Vector(2, u32){
-            @intCast(u32, x),
-            @intCast(u32, y),
-        };
+        const x = @as(i32, @intCast(center_x)) + @as(i32, @intFromFloat(dx));
+        const y = @as(i32, @intCast(center_y)) - @as(i32, @intFromFloat(dy));
+
+        return .{ @intCast(x), @intCast(y) };
     }
 
     fn createBaseImage(self: ControllerFrameProducer, dst: [][3]u8) void {
         @setRuntimeSafety(false);
 
-        const bg_r = @intToFloat(f32, bg_color[0]);
-        const bg_g = @intToFloat(f32, bg_color[1]);
-        const bg_b = @intToFloat(f32, bg_color[2]);
+        const bg_r: f32 = @floatFromInt(bg_color[0]);
+        const bg_g: f32 = @floatFromInt(bg_color[1]);
+        const bg_b: f32 = @floatFromInt(bg_color[2]);
 
-        for (self.base.pixels) |pix, i| {
-            const r = @intToFloat(f32, pix[0]) / 65535.0;
-            const g = @intToFloat(f32, pix[1]) / 65535.0;
-            const b = @intToFloat(f32, pix[2]) / 65535.0;
-            const a = @intToFloat(f32, pix[3]) / 65535.0;
+        for (self.base.pixels, dst) |pix, *out| {
+            const r = @as(f32, @floatFromInt(pix[0])) / 65535.0;
+            const g = @as(f32, @floatFromInt(pix[1])) / 65535.0;
+            const b = @as(f32, @floatFromInt(pix[2])) / 65535.0;
+            const a = @as(f32, @floatFromInt(pix[3])) / 65535.0;
 
-            dst[i] = [3]u8{
-                @floatToInt(u8, r * a * 255.0) + @floatToInt(u8, bg_r * (1.0 - a)),
-                @floatToInt(u8, g * a * 255.0) + @floatToInt(u8, bg_g * (1.0 - a)),
-                @floatToInt(u8, b * a * 255.0) + @floatToInt(u8, bg_b * (1.0 - a)),
+            out.* = .{
+                @intFromFloat(r * a * 255.0 + bg_r * (1.0 - a)),
+                @intFromFloat(g * a * 255.0 + bg_g * (1.0 - a)),
+                @intFromFloat(b * a * 255.0 + bg_b * (1.0 - a)),
             };
         }
     }
@@ -286,15 +286,15 @@ const ControllerFrameProducer = struct {
                 const cur = dst[y * w + x];
                 const over = image.pixels[off_y * image.width + off_x];
 
-                const alpha = @intToFloat(f32, over[3]) / 65535.0;
+                const alpha = @as(f32, @floatFromInt(over[3])) / 65535.0;
 
-                const cur_r = @floatToInt(u8, @intToFloat(f32, cur[0]) * (1.0 - alpha));
-                const cur_g = @floatToInt(u8, @intToFloat(f32, cur[1]) * (1.0 - alpha));
-                const cur_b = @floatToInt(u8, @intToFloat(f32, cur[2]) * (1.0 - alpha));
+                const cur_r: u8 = @intFromFloat(@as(f32, @floatFromInt(cur[0])) * (1.0 - alpha));
+                const cur_g: u8 = @intFromFloat(@as(f32, @floatFromInt(cur[1])) * (1.0 - alpha));
+                const cur_b: u8 = @intFromFloat(@as(f32, @floatFromInt(cur[2])) * (1.0 - alpha));
 
-                const over_r = @floatToInt(u8, @intToFloat(f32, over[0]) / 65535.0 * 255.0 * alpha);
-                const over_g = @floatToInt(u8, @intToFloat(f32, over[1]) / 65535.0 * 255.0 * alpha);
-                const over_b = @floatToInt(u8, @intToFloat(f32, over[2]) / 65535.0 * 255.0 * alpha);
+                const over_r: u8 = @intFromFloat(@as(f32, @floatFromInt(over[0])) / 65535.0 * 255.0 * alpha);
+                const over_g: u8 = @intFromFloat(@as(f32, @floatFromInt(over[1])) / 65535.0 * 255.0 * alpha);
+                const over_b: u8 = @intFromFloat(@as(f32, @floatFromInt(over[2])) / 65535.0 * 255.0 * alpha);
 
                 dst[y * w + x] = [3]u8{
                     cur_r + over_r,
@@ -310,10 +310,29 @@ fn readImage(allocator: std.mem.Allocator, dir: std.fs.Dir, filename: []const u8
     var f = try dir.openFile(filename, .{});
     defer f.close();
 
-    return try zpng.Image.read(allocator, std.io.bufferedReader(f.reader()).reader());
+    var br = std.io.bufferedReader(f.reader());
+    return zpng.Image.read(allocator, br.reader());
 }
 
-pub fn main() !void {
+pub fn main() !u8 {
+    mainInner() catch |err| switch (err) {
+        error.BadUsage => {
+            const stderr = std.io.getStdErr().writer();
+            try stderr.writeAll(
+                \\Usage: tasvis <script file> <length in ticks> [output file]
+                \\
+                \\Example: tasvis script.p2tas 2500
+                \\         tasvis laser_chaining.p2tas 6000 laser_chaining.mp4
+                \\
+            );
+            return 1;
+        },
+        else => |e| return e,
+    };
+    return 0;
+}
+
+fn mainInner() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
 

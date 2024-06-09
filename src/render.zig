@@ -146,7 +146,7 @@ const AvCodecContext = struct {
     _ptr: *c.AVCodecContext,
 
     pub fn open(fmt_ctx: AvFormatContext, id: c.AVCodecID, fps: u16, frame_info: AvFrame.Info) !AvCodecContext {
-        var codec = c.avcodec_find_encoder(id) orelse
+        const codec = c.avcodec_find_encoder(id) orelse
             return error.CodecFindError;
 
         var ctx = c.avcodec_alloc_context3(codec) orelse
@@ -180,8 +180,8 @@ const AvCodecContext = struct {
 
     pub fn frameInfo(self: AvCodecContext) AvFrame.Info {
         return .{
-            .width = @intCast(u16, self._ptr.width),
-            .height = @intCast(u16, self._ptr.height),
+            .width = @intCast(self._ptr.width),
+            .height = @intCast(self._ptr.height),
             .pix_fmt = self._ptr.pix_fmt,
         };
     }
@@ -193,7 +193,7 @@ const AvCodecContext = struct {
     }
 
     pub fn sendFrame(self: AvCodecContext, frame: ?AvFrame) !void {
-        var frame_ptr = if (frame) |f| f._ptr else null;
+        const frame_ptr = if (frame) |f| f._ptr else null;
 
         if (c.avcodec_send_frame(self._ptr, frame_ptr) < 0) {
             return error.FrameSendError;
@@ -242,8 +242,8 @@ const AvFrame = struct {
 
     pub fn getInfo(self: AvFrame) Info {
         return .{
-            .width = @intCast(u16, self._ptr.width),
-            .height = @intCast(u16, self._ptr.height),
+            .width = @intCast(self._ptr.width),
+            .height = @intCast(self._ptr.height),
             .pix_fmt = self._ptr.format,
         };
     }
@@ -254,7 +254,7 @@ const AvFrame = struct {
             return error.BadPixelFormat;
         }
         const len = @as(usize, info.width) * @as(usize, info.height);
-        return @ptrCast([*][3]u8, self._ptr.data[0])[0..len];
+        return @as([*][3]u8, @ptrCast(self._ptr.data[0]))[0..len];
     }
 };
 
